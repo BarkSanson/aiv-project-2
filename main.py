@@ -59,11 +59,25 @@ if fps == 0:
 # 4) Selección de ROIs (uno por pez)
 # ------------------------------
 
+max_display_w = 1280
+max_display_h = 720
+roi_scale = min(max_display_w / frame_w, max_display_h / frame_h, 1.0)
+first_frame_resized = cv2.resize(first_frame, None, fx=roi_scale, fy=roi_scale)
 # Puedes seleccionar varias ROIs con selectROIs
-rois = cv2.selectROIs("Selecciona peces", first_frame, fromCenter=False, showCrosshair=True)
+rois = cv2.selectROIs("Selecciona peces", first_frame_resized, fromCenter=False, showCrosshair=True)
 cv2.destroyWindow("Selecciona peces")
 
 rois = list(rois)
+if roi_scale != 1.0:
+    rois = [
+        (
+            int(round(x / roi_scale)),
+            int(round(y / roi_scale)),
+            int(round(w / roi_scale)),
+            int(round(h / roi_scale)),
+        )
+        for (x, y, w, h) in rois
+    ]
 print("ROIs seleccionadas:", rois)
 
 # Cada ROI es (x, y, w, h)
@@ -110,12 +124,23 @@ term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
 # 6) Bucle principal de tracking
 # ------------------------------
 
+back_sub = cv2.createBackgroundSubtractorKNN()
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    fg_mask = back_sub.apply(frame)
+    fg_mask = cv2.threshold(fg_mask, 180, 255, cv2.THRESH_BINARY)[1]
+
+    masked_frame = cv2.bitwise_and(frame, frame, mask=fg_mask)
+
+    #resized_frame = cv2.resize(masked_frame, None, fx=0.5, fy=0.5)
+    #cv2.imshow("Tracking peces - CamShift", resized_frame)
+    #key = cv2.waitKey(0)
+
+    hsv = cv2.cvtColor(masked_frame, cv2.COLOR_BGR2HSV)
 
     for i, fish in enumerate(fish_data):
         track_window = fish["track_window"]
@@ -196,7 +221,8 @@ while True:
         # cv2.putText(frame, pos_text, (x_min, y_min + h_box + 15),
         #             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1, cv2.LINE_AA)
 
-    cv2.imshow("Tracking peces - CamShift", frame)
+    resized_frame = cv2.resize(frame, None, fx=0.5, fy=0.5)
+    cv2.imshow("Tracking peces - CamShift", resized_frame)
     key = cv2.waitKey(1) & 0xFF
     if key == 27 or key == ord('q'):  # ESC o q para salir
         break
